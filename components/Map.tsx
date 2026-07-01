@@ -12,6 +12,7 @@ interface MapProps {
   readonly showSatellite: boolean;
   readonly showRadius: boolean;
   readonly showSafeZone: boolean;
+  readonly showUnsafeZone: boolean;
 }
 
 export default function ApiaryMap({
@@ -22,12 +23,14 @@ export default function ApiaryMap({
   showSatellite,
   showRadius,
   showSafeZone,
+  showUnsafeZone,
 }: Readonly<MapProps>) {
   const mapRef = useRef<HTMLDivElement>(null);
   const googleMapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const circlesRef = useRef<google.maps.Circle[]>([]);
   const safeZoneRef = useRef<google.maps.Polygon | null>(null);
+  const unsafeZoneRef = useRef<google.maps.Polygon | null>(null);
 
   // Initialize map
   useEffect(() => {
@@ -45,7 +48,7 @@ export default function ApiaryMap({
       
       const map = new google.maps.Map(mapRef.current, {
         center,
-        zoom: 12, // Approximately 10km scale
+        zoom: 11, // Approximately 15km scale (more zoomed out)
         mapTypeId: showSatellite ? "satellite" : "roadmap",
         mapTypeControl: false,
         fullscreenControl: false,
@@ -82,6 +85,10 @@ export default function ApiaryMap({
     if (safeZoneRef.current) {
       safeZoneRef.current.setMap(null);
       safeZoneRef.current = null;
+    }
+    if (unsafeZoneRef.current) {
+      unsafeZoneRef.current.setMap(null);
+      unsafeZoneRef.current = null;
     }
   }, []);
 
@@ -139,52 +146,151 @@ export default function ApiaryMap({
     if (showSafeZone) {
       drawSafeZone();
     }
-  }, [apiaries, selectedApiary, showRadius, showSafeZone, onSelectApiary, clearOverlays]);
 
-  const drawSafeZone = () => {
+    // Show unsafe zone if enabled
+    if (showUnsafeZone) {
+      drawUnsafeZone();
+    }
+  }, [apiaries, selectedApiary, showRadius, showSafeZone, showUnsafeZone, onSelectApiary, clearOverlays]);
+
+  const drawSafeZone = async () => {
     if (!googleMapRef.current) return;
 
+    // Safe zone = union of 3km circles from HEALTHY apiaries (diseased = false)
+    const healthyApiaries = apiaries.filter((a) => !a.diseased);
+
+    if (healthyApiaries.length === 0) return;
+
+    try {
+      // @ts-expect-error Turf.js has type export issues but works fine
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const turf: any = await import("@turf/turf");
+
+      if (!googleMapRef.current) return;
+
+      // Create circular polygons for each healthy apiary (3km radius)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const circles: any[] = [];
+
+      healthyApiaries.forEach((apiary) => {
+        // Create a point
+        const pt = turf.point([apiary.longitude, apiary.latitude]);
+        // Create a circle with 3km radius (64 points for smooth circle)
+        const circ = turf.circle(pt, 3, { units: "kilometers", steps: 64 });
+        circles.push(circ);
+      });
+
+      if (circles.length === 0) return;
+
+      // Union all circles together
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let safeZonePolygon: any = circles[0];
+      for (let i = 1; i < circles.length; i++) {
+        const united = turf.union(safeZonePolygon, circles[i]);
+        if (united) {
+          safeZonePolygon = united;
+        }
+      }
+
+      if (!safeZonePolygon) return;
+
+      // Convert turf polygon to Google Maps format
+      const coords = turf.coordAll(safeZonePolygon);
+      const paths: google.maps.LatLngLiteral[] = coords.map((coord: number[]) => ({
+        lat: coord[1],
+        lng: coord[0],
+      }));
+
+      // Create and display the safe zone polygon
+      const googlePolygon = new google.maps.Polygon({
+        paths,
+        fillColor: "#22c55e", // Green for safe
+        fillOpacity: 0.15,
+        strokeColor: "#22c55e",
+        strokeWeight: 2,
+        strokeOpacity: 0.6,
+      });
+
+      googlePolygon.setMap(googleMapRef.current);
+      safeZoneRef.current = googlePolygon;
+    } catch (error) {
+      console.error("Error drawing safe zone:", error);
+    }
+  };
+
+  const drawUnsafeZone = async () => {
+    if (!googleMapRef.current) return;
+
+    // Unsafe zone = union of 3km circles from DISEASED apiaries MINUS healthy apiary circles
     const diseasedApiaries = apiaries.filter((a) => a.diseased);
-    
+
     if (diseasedApiaries.length === 0) return;
 
-    // Create union of all diseased circles
-    const bounds = new google.maps.LatLngBounds();
-    
-    diseasedApiaries.forEach((apiary) => {
-      // Add points around the circle to create a polygon approximation
-      const center = new google.maps.LatLng(apiary.latitude, apiary.longitude);
-      const radius = 3000; // 3km in meters
-      
-      for (let i = 0; i < 360; i += 10) {
-        const heading = i;
-        const point = google.maps.geometry.spherical.computeOffset(center, radius, heading);
-        bounds.extend(point);
+    try {
+      // @ts-expect-error Turf.js has type export issues but works fine
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const turf: any = await import("@turf/turf");
+
+      if (!googleMapRef.current) return;
+
+      // Create circular polygons for each diseased apiary (3km radius)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const diseasedCircles: any[] = [];
+
+      diseasedApiaries.forEach((apiary) => {
+        const pt = turf.point([apiary.longitude, apiary.latitude]);
+        const circ = turf.circle(pt, 3, { units: "kilometers", steps: 64 });
+        diseasedCircles.push(circ);
+      });
+
+      // Union all diseased circles together
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let unsafeZonePolygon: any = diseasedCircles[0];
+      for (let i = 1; i < diseasedCircles.length; i++) {
+        const united = turf.union(unsafeZonePolygon, diseasedCircles[i]);
+        if (united) {
+          unsafeZonePolygon = united;
+        }
       }
-    });
 
-    // Create a rectangle representing the safe zone area
-    // Note: For true polygon union, you'd need a more complex algorithm or library like Turf.js
-    // This is a simplified visual representation
-    const ne = bounds.getNorthEast();
-    const sw = bounds.getSouthWest();
-    
-    const safeZonePolygon = new google.maps.Polygon({
-      paths: [
-        { lat: ne.lat(), lng: sw.lng() },
-        { lat: ne.lat(), lng: ne.lng() },
-        { lat: sw.lat(), lng: ne.lng() },
-        { lat: sw.lat(), lng: sw.lng() },
-      ],
-      fillColor: "#3b82f6",
-      fillOpacity: 0.1,
-      strokeColor: "#3b82f6",
-      strokeWeight: 2,
-      strokeOpacity: 0.5,
-    });
+      // Now subtract healthy apiary circles from the unsafe zone
+      const healthyApiaries = apiaries.filter((a) => !a.diseased);
 
-    safeZonePolygon.setMap(googleMapRef.current);
-    safeZoneRef.current = safeZonePolygon;
+      for (const healthy of healthyApiaries) {
+        const healthyPt = turf.point([healthy.longitude, healthy.latitude]);
+        const healthyCircle = turf.circle(healthyPt, 3, { units: "kilometers", steps: 64 });
+
+        // Use difference to subtract healthy circle from unsafe zone
+        const diff = turf.difference(unsafeZonePolygon, healthyCircle);
+        if (diff) {
+          unsafeZonePolygon = diff;
+        }
+      }
+
+      if (!unsafeZonePolygon) return;
+
+      // Convert turf polygon to Google Maps format
+      const coords = turf.coordAll(unsafeZonePolygon);
+      const paths: google.maps.LatLngLiteral[] = coords.map((coord: number[]) => ({
+        lat: coord[1],
+        lng: coord[0],
+      }));
+
+      // Create and display the unsafe zone polygon
+      const googlePolygon = new google.maps.Polygon({
+        paths,
+        fillColor: "#ef4444", // Red for unsafe
+        fillOpacity: 0.2,
+        strokeColor: "#ef4444",
+        strokeWeight: 2,
+        strokeOpacity: 0.6,
+      });
+
+      googlePolygon.setMap(googleMapRef.current);
+      unsafeZoneRef.current = googlePolygon;
+    } catch (error) {
+      console.error("Error drawing unsafe zone:", error);
+    }
   };
 
   return <div ref={mapRef} className="w-full h-full" />;

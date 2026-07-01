@@ -16,6 +16,7 @@ export default function Dashboard() {
   const [showSatellite, setShowSatellite] = useState(false);
   const [showRadius, setShowRadius] = useState(false);
   const [showSafeZone, setShowSafeZone] = useState(false);
+  const [showUnsafeZone, setShowUnsafeZone] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
@@ -143,6 +144,8 @@ export default function Dashboard() {
           onToggleRadius={() => setShowRadius(!showRadius)}
           showSafeZone={showSafeZone}
           onToggleSafeZone={() => setShowSafeZone(!showSafeZone)}
+          showUnsafeZone={showUnsafeZone}
+          onToggleUnsafeZone={() => setShowUnsafeZone(!showUnsafeZone)}
         />
 
         {/* Map */}
@@ -155,6 +158,7 @@ export default function Dashboard() {
             showSatellite={showSatellite}
             showRadius={showRadius}
             showSafeZone={showSafeZone}
+            showUnsafeZone={showUnsafeZone}
           />
         </div>
       </div>

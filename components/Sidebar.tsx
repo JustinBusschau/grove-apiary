@@ -1,7 +1,7 @@
 "use client";
 
 import { Apiary } from "@/types";
-import { Plus, Edit2, Trash2, Satellite, Circle, Shield } from "lucide-react";
+import { Plus, Edit2, Trash2, Satellite, Circle, Shield, AlertTriangle } from "lucide-react";
 
 interface SidebarProps {
   apiaries: Apiary[];
@@ -16,6 +16,8 @@ interface SidebarProps {
   onToggleRadius: () => void;
   showSafeZone: boolean;
   onToggleSafeZone: () => void;
+  showUnsafeZone: boolean;
+  onToggleUnsafeZone: () => void;
 }
 
 export default function Sidebar({
@@ -31,6 +33,8 @@ export default function Sidebar({
   onToggleRadius,
   showSafeZone,
   onToggleSafeZone,
+  showUnsafeZone,
+  onToggleUnsafeZone,
 }: SidebarProps) {
   return (
     <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
@@ -123,71 +127,49 @@ export default function Sidebar({
         <div className="space-y-2">
           <button
             onClick={onToggleSatellite}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
               showSatellite
                 ? "bg-primary-100 text-primary-700"
-                : "bg-white text-gray-700 hover:bg-gray-100"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
             <Satellite className="w-4 h-4" />
-            <span className="text-sm">Satellite Imagery</span>
-            <div
-              className={`ml-auto w-10 h-5 rounded-full transition-colors ${
-                showSatellite ? "bg-primary-600" : "bg-gray-300"
-              }`}
-            >
-              <div
-                className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${
-                  showSatellite ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </div>
+            Satellite Imagery
           </button>
 
           <button
             onClick={onToggleRadius}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
               showRadius
                 ? "bg-primary-100 text-primary-700"
-                : "bg-white text-gray-700 hover:bg-gray-100"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
             <Circle className="w-4 h-4" />
-            <span className="text-sm">3km Radius</span>
-            <div
-              className={`ml-auto w-10 h-5 rounded-full transition-colors ${
-                showRadius ? "bg-primary-600" : "bg-gray-300"
-              }`}
-            >
-              <div
-                className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${
-                  showRadius ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </div>
+            3km Radius
           </button>
 
           <button
             onClick={onToggleSafeZone}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
               showSafeZone
-                ? "bg-primary-100 text-primary-700"
-                : "bg-white text-gray-700 hover:bg-gray-100"
+                ? "bg-green-100 text-green-700"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
             <Shield className="w-4 h-4" />
-            <span className="text-sm">Safe Zone</span>
-            <div
-              className={`ml-auto w-10 h-5 rounded-full transition-colors ${
-                showSafeZone ? "bg-primary-600" : "bg-gray-300"
-              }`}
-            >
-              <div
-                className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${
-                  showSafeZone ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </div>
+            Safe Zone
+          </button>
+          <button
+            onClick={onToggleUnsafeZone}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              showUnsafeZone
+                ? "bg-orange-100 text-orange-700"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            <AlertTriangle className="w-4 h-4" />
+            Suspected Unsafe
           </button>
         </div>
 

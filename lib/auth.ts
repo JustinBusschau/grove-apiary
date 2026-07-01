@@ -4,7 +4,18 @@ import EmailProvider from "next-auth/providers/email";
 import { prisma } from "./prisma";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy initialization of Resend client
+let resendClient: Resend | null = null;
+const getResend = () => {
+  if (!resendClient) {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      throw new Error("RESEND_API_KEY is required");
+    }
+    resendClient = new Resend(apiKey);
+  }
+  return resendClient;
+};
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
@@ -20,8 +31,19 @@ export const authOptions: NextAuthOptions = {
       },
       from: process.env.RESEND_FROM_EMAIL || "noreply@grove-apiary.com",
       sendVerificationRequest: async ({ identifier: email, url }) => {
+        // Development mode: log to console instead of sending email
+        if (!process.env.RESEND_API_KEY || process.env.NODE_ENV === "development") {
+          console.log("\n" + "=".repeat(60));
+          console.log("📧 DEVELOPMENT MODE - Magic Link for:", email);
+          console.log("=".repeat(60));
+          console.log("🔗 Sign in URL:", url);
+          console.log("=".repeat(60) + "\n");
+          return;
+        }
+
+        // Production mode: send actual email
         try {
-          await resend.emails.send({
+          await getResend().emails.send({
             from: process.env.RESEND_FROM_EMAIL || "Grove Apiary <noreply@grove-apiary.com>",
             to: email,
             subject: "Sign in to Grove Apiary",
@@ -56,6 +78,14 @@ export const authOptions: NextAuthOptions = {
         token.uid = user.id;
       }
       return token;
+    },
+    redirect: async ({ url, baseUrl }) => {
+      // Allows relative callback URLs
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      // Allows callback URLs on the same origin
+      if (new URL(url).origin === baseUrl) return url;
+      // Default to home page
+      return baseUrl;
     },
   },
   session: {

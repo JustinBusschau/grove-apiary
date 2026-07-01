@@ -1,0 +1,33 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
+    ports:
+      - "3000:3000"
+    environment:
+      # Set to 'production' when deploying with real email sending
+      # For local development, leave unset or use 'development' to see magic links in logs
+      - NODE_ENV=${NODE_ENV:-development}
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-your-secret-key-change-this-in-production}
+      - DATABASE_URL=file:/app/prisma/dev.db
+      - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
+      # Optional: Only needed for real email sending in production
+      # Get API key from: https://resend.com
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@grove-apiary.com}
+    volumes:
+      # Persist SQLite database
+      - ./prisma/dev.db:/app/prisma/dev.db
+      # Ensure directory exists
+      - ./prisma:/app/prisma
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/auth/providers"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

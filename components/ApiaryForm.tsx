@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Apiary } from "@/types";
 import { Loader } from "@googlemaps/js-api-loader";
-import { X, MapPin } from "lucide-react";
+import { X, MapPin, Search, AlertTriangle, Satellite, Maximize2, Minimize2 } from "lucide-react";
 
 interface ApiaryFormProps {
   apiary: Apiary | null;
@@ -25,6 +25,10 @@ export default function ApiaryForm({ apiary, onSubmit, onClose }: ApiaryFormProp
   const mapRef = useRef<HTMLDivElement>(null);
   const googleMapRef = useRef<google.maps.Map | null>(null);
   const markerRef = useRef<google.maps.Marker | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSatellite, setShowSatellite] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
 
   useEffect(() => {
     if (apiary) {
@@ -57,7 +61,7 @@ export default function ApiaryForm({ apiary, onSubmit, onClose }: ApiaryFormProp
       const map = new google.maps.Map(mapRef.current, {
         center,
         zoom: 13,
-        mapTypeId: "roadmap",
+        mapTypeId: showSatellite ? "satellite" : "roadmap",
         mapTypeControl: false,
         fullscreenControl: false,
       });
@@ -109,14 +113,82 @@ export default function ApiaryForm({ apiary, onSubmit, onClose }: ApiaryFormProp
     }
   }, [formData.latitude, formData.longitude]);
 
+  // Update map type when satellite toggle changes
+  useEffect(() => {
+    if (googleMapRef.current) {
+      googleMapRef.current.setMapTypeId(showSatellite ? "satellite" : "roadmap");
+    }
+  }, [showSatellite]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit(formData);
   };
 
+  const handleSearch = () => {
+    if (!searchQuery.trim() || !googleMapRef.current) {
+      console.log("Search skipped: query empty or map not ready");
+      return;
+    }
+
+    setIsSearching(true);
+    console.log("Starting geocode search for:", searchQuery);
+
+    const geocoder = new google.maps.Geocoder();
+    geocoder.geocode({ address: searchQuery }, (results, status) => {
+      console.log("Geocode response:", status, results);
+
+      if (status === google.maps.GeocoderStatus.OK && results && results.length > 0) {
+        const location = results[0].geometry.location;
+        const newPosition = { lat: location.lat(), lng: location.lng() };
+
+        console.log("Found location:", newPosition, results[0].formatted_address);
+
+        // Update map
+        googleMapRef.current?.panTo(newPosition);
+        googleMapRef.current?.setZoom(15);
+
+        // Update marker
+        if (markerRef.current) {
+          markerRef.current.setPosition(newPosition);
+        }
+
+        // Extract address components
+        const addressComponents = results[0].address_components;
+        let postcode = "";
+        let street = "";
+
+        addressComponents?.forEach((component) => {
+          const types = component.types;
+          if (types.includes("postal_code")) {
+            postcode = component.long_name;
+          } else if (types.includes("route")) {
+            street = component.long_name;
+          }
+        });
+
+        // Update form data
+        setFormData((prev) => ({
+          ...prev,
+          latitude: newPosition.lat,
+          longitude: newPosition.lng,
+          address: prev.address || street || results[0].formatted_address || "",
+          postcode: prev.postcode || postcode || "",
+        }));
+      } else {
+        console.error("Geocode failed:", status);
+        alert(`Location not found: ${status}. Please check your Google Maps API key has Geocoding API enabled.`);
+      }
+
+      setIsSearching(false);
+    });
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+      <div className={`bg-white rounded-xl shadow-xl w-full overflow-y-auto transition-all duration-300 ${
+        isFullScreen ? "max-w-[95vw] max-h-[95vh] h-[95vh]" : "max-w-4xl max-h-[90vh]"
+      }`}>
         <div className="p-6 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-gray-900">
             {apiary ? "Edit Apiary" : "Add New Apiary"}
@@ -150,31 +222,29 @@ export default function ApiaryForm({ apiary, onSubmit, onClose }: ApiaryFormProp
 
               <div>
                 <label htmlFor="address" className="block text-sm font-medium text-gray-700 mb-1">
-                  Address Line 1 *
+                  Address Line 1
                 </label>
                 <input
                   type="text"
                   id="address"
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  required
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  placeholder="e.g., 123 Farm Road"
+                  placeholder="e.g., 123 Farm Road (optional)"
                 />
               </div>
 
               <div>
                 <label htmlFor="postcode" className="block text-sm font-medium text-gray-700 mb-1">
-                  Postcode *
+                  Postcode
                 </label>
                 <input
                   type="text"
                   id="postcode"
                   value={formData.postcode}
                   onChange={(e) => setFormData({ ...formData, postcode: e.target.value })}
-                  required
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  placeholder="e.g., AB12 3CD"
+                  placeholder="e.g., AB12 3CD (optional)"
                 />
               </div>
 
@@ -223,6 +293,33 @@ export default function ApiaryForm({ apiary, onSubmit, onClose }: ApiaryFormProp
                 </div>
               </div>
 
+              {/* Disease Status Toggle */}
+              <div className={`flex items-center gap-3 p-4 rounded-lg border ${formData.diseased ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
+                <div className={`p-2 rounded-full ${formData.diseased ? "bg-red-100" : "bg-green-100"}`}>
+                  <AlertTriangle className={`w-5 h-5 ${formData.diseased ? "text-red-600" : "text-green-600"}`} />
+                </div>
+                <div className="flex-1">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.diseased}
+                      onChange={(e) => setFormData({ ...formData, diseased: e.target.checked })}
+                      className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                    />
+                    <div>
+                      <span className={`font-medium ${formData.diseased ? "text-red-700" : "text-green-700"}`}>
+                        {formData.diseased ? "Disease Present" : "Healthy / No Disease"}
+                      </span>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {formData.diseased
+                          ? "Apiary has disease - red zone will be shown"
+                          : "Apiary is healthy - green zone will be shown"}
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
               <div className="flex items-center gap-2 p-3 bg-yellow-50 rounded-lg">
                 <MapPin className="w-5 h-5 text-yellow-600" />
                 <p className="text-sm text-yellow-700">
@@ -231,17 +328,66 @@ export default function ApiaryForm({ apiary, onSubmit, onClose }: ApiaryFormProp
               </div>
             </div>
 
-            {/* Right column - Map */}
+            {/* Right column - Map with Search */}
             <div className="space-y-4">
-              <label className="block text-sm font-medium text-gray-700">
-                Location on Map
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-gray-700">
+                  Location on Map
+                </label>
+                <div className="flex items-center gap-2">
+                  {/* Satellite Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setShowSatellite(!showSatellite)}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      showSatellite
+                        ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                    title={showSatellite ? "Switch to Map View" : "Switch to Satellite View"}
+                  >
+                    <Satellite className="w-4 h-4" />
+                    {showSatellite ? "Map" : "Satellite"}
+                  </button>
+                  {/* Fullscreen Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setIsFullScreen(!isFullScreen)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                    title={isFullScreen ? "Exit Full Screen" : "Full Screen"}
+                  >
+                    {isFullScreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                    {isFullScreen ? "Collapse" : "Expand"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Search Box */}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  placeholder="Search by postcode, street or town..."
+                  className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+                <button
+                  type="button"
+                  onClick={handleSearch}
+                  disabled={isSearching || !searchQuery.trim()}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-primary-600 disabled:opacity-50"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+              </div>
+
               <div
                 ref={mapRef}
-                className="w-full h-80 rounded-lg border border-gray-300"
+                className={`w-full rounded-lg border border-gray-300 ${isFullScreen ? "h-[calc(95vh-280px)]" : "h-80"}`}
               />
               <p className="text-sm text-gray-500">
-                Drag the marker to set the exact apiary location, or type coordinates manually.
+                Search above or drag the marker to set the exact apiary location.
               </p>
             </div>
           </div>
